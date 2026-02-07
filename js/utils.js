@@ -62,42 +62,36 @@ const Utils = (() => {
 
   // ---- Deep Links ----
   function buildWhatsAppLink(phone, message, app) {
-    const cleanPhone = phone.replace(/[\s\-\(\)\.+]/g, '').replace(/^00/, '');
-    const encodedMsg = encodeURIComponent(message);
-
-    // Use whatsapp:// URL scheme for iOS (works better in PWA/standalone mode)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
-
-    if (isIOS) {
-      if (app === 'business') {
-        // WhatsApp Business iOS URL scheme
-        return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`;
-      }
-      return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`;
+    // Keep only digits (remove spaces, dashes, dots, parentheses)
+    // But preserve leading + for international format
+    let cleanPhone = phone.replace(/[\s\-\(\)\.]/g, '');
+    // Remove leading + and replace 00 prefix
+    if (cleanPhone.startsWith('+')) {
+      cleanPhone = cleanPhone.slice(1);
+    } else if (cleanPhone.startsWith('00')) {
+      cleanPhone = cleanPhone.slice(2);
+    }
+    // If French number starting with 0, add country code 33
+    if (cleanPhone.startsWith('0') && cleanPhone.length === 10) {
+      cleanPhone = '33' + cleanPhone.slice(1);
     }
 
-    return `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
+    const encodedMsg = encodeURIComponent(message);
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`;
   }
 
   function openWhatsApp(phone, message, app) {
     const url = buildWhatsAppLink(phone, message, app);
-    // On iOS PWA, window.open is blocked. Use location.href or a real <a> click
-    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
-    if (isStandalone) {
-      // In PWA standalone mode: create a temporary link and click it
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 100);
-    } else {
-      // In browser: direct navigation works
-      window.location.href = url;
-    }
+    // Use a real <a> element click - works on all platforms (iOS Safari, PWA, Android)
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 200);
   }
 
   // ---- Phone formatting ----
