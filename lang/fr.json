@@ -98,7 +98,10 @@
     "importCSV": "Importer CSV",
     "importSuccess": "contacts importés",
     "importError": "Erreur d'import",
-    "csvFormat": "Format: nom,téléphone (une ligne par contact)"
+    "csvFormat": "Format: nom,téléphone (une ligne par contact)",
+    "pickFromPhone": "Répertoire",
+    "pickFromApp": "Mes contacts",
+    "quickAdd": "Ajouter"
   },
   "templates": {
     "title": "Modèles",

@@ -608,6 +608,81 @@ textarea {
 
 .form-actions .btn { flex: 1; }
 
+/* ---- Contact Picker Row ---- */
+.contact-pick-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.contact-pick-row .btn {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.contact-pick-row .btn svg {
+  flex-shrink: 0;
+}
+
+/* ---- Selected Contact Display ---- */
+.selected-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--color-primary-light);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+
+.selected-contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selected-contact-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.selected-contact-phone {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ---- Contact Picker Modal List ---- */
+.contact-picker-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.contact-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: background var(--transition);
+}
+
+.contact-pick-item:active {
+  background: var(--color-primary-light);
+}
+
+.contact-pick-item:last-child {
+  border-bottom: none;
+}
+
 .char-count {
   text-align: right;
   font-size: 12px;

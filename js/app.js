@@ -166,16 +166,46 @@ const App = (() => {
           <!-- Contact Selection -->
           <div class="form-group">
             <label>${Utils.t('message.recipient')}</label>
-            ${contacts.length ? `
-              <select id="contact-select" class="form-select">
-                <option value="">${Utils.t('message.selectContact')}</option>
-                ${contacts.map(c => `
-                  <option value="${c.id}" data-phone="${c.phone}" ${message && message.contactId === c.id ? 'selected' : ''}>
-                    ${Utils.escapeHtml(c.name)} (${Utils.formatPhone(c.phone)})
-                  </option>
-                `).join('')}
-              </select>
-            ` : ''}
+
+            <!-- Action buttons row -->
+            <div class="contact-pick-row">
+              ${Utils.hasContactPicker() ? `
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-pick-native">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/><line x1="20" y1="8" x2="20" y2="14"/></svg>
+                  ${Utils.t('contacts.pickFromPhone')}
+                </button>
+              ` : ''}
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-pick-internal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                ${Utils.t('contacts.pickFromApp')}
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-quick-add-contact">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                ${Utils.t('contacts.quickAdd')}
+              </button>
+            </div>
+
+            <!-- Selected contact display -->
+            <div id="selected-contact" class="selected-contact" style="display:${isEdit && message.contactName ? 'flex' : 'none'}">
+              <div class="selected-contact-info">
+                <span class="selected-contact-name" id="selected-name">${isEdit ? Utils.escapeHtml(message.contactName || '') : ''}</span>
+                <span class="selected-contact-phone" id="selected-phone">${isEdit ? Utils.formatPhone(message.phone || '') : ''}</span>
+              </div>
+              <button type="button" class="btn-icon" id="btn-clear-contact" title="${Utils.t('common.delete')}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <!-- Hidden select for contact ID -->
+            <select id="contact-select" style="display:none">
+              <option value=""></option>
+              ${contacts.map(c => `
+                <option value="${c.id}" data-phone="${c.phone}" data-name="${Utils.escapeHtml(c.name)}" ${message && message.contactId === c.id ? 'selected' : ''}>
+                  ${Utils.escapeHtml(c.name)} (${Utils.formatPhone(c.phone)})
+                </option>
+              `).join('')}
+            </select>
+
             ${groups.length ? `
               <select id="group-select" class="form-select mt-1">
                 <option value="">${Utils.t('message.selectGroup')}</option>
@@ -184,6 +214,7 @@ const App = (() => {
                 `).join('')}
               </select>
             ` : ''}
+
             <div class="form-divider"><span>${Utils.t('common.or')}</span></div>
             <input type="tel" id="phone-input" name="phone"
               value="${isEdit ? (message.phone || '') : ''}"
@@ -308,7 +339,141 @@ const App = (() => {
     const charCount = document.getElementById('char-count');
     const tagInput = document.getElementById('tag-input');
     const tagsList = document.getElementById('tags-list');
+    const phoneInput = document.getElementById('phone-input');
+    const selectedContactDiv = document.getElementById('selected-contact');
+    const selectedNameEl = document.getElementById('selected-name');
+    const selectedPhoneEl = document.getElementById('selected-phone');
     let currentTags = existingMessage && existingMessage.tags ? [...existingMessage.tags] : [];
+
+    // Helper: set selected contact in the UI
+    function setSelectedContact(name, phone, contactId) {
+      selectedNameEl.textContent = name;
+      selectedPhoneEl.textContent = Utils.formatPhone(phone);
+      selectedContactDiv.style.display = 'flex';
+      phoneInput.value = phone;
+      if (contactId && contactSelect) {
+        contactSelect.value = contactId;
+      }
+      if (groupSelect) groupSelect.value = '';
+    }
+
+    function clearSelectedContact() {
+      selectedNameEl.textContent = '';
+      selectedPhoneEl.textContent = '';
+      selectedContactDiv.style.display = 'none';
+      phoneInput.value = '';
+      if (contactSelect) contactSelect.value = '';
+    }
+
+    // Clear contact button
+    const btnClear = document.getElementById('btn-clear-contact');
+    if (btnClear) {
+      btnClear.addEventListener('click', clearSelectedContact);
+    }
+
+    // Native Contact Picker (Android/Chrome)
+    const btnPickNative = document.getElementById('btn-pick-native');
+    if (btnPickNative) {
+      btnPickNative.addEventListener('click', async () => {
+        const picked = await Utils.pickContact();
+        if (picked && picked.phone) {
+          setSelectedContact(picked.name || '', picked.phone, null);
+          // Also save to internal contacts
+          const existing = await Contacts.getAllContacts();
+          const alreadyExists = existing.find(c => Utils.cleanPhone(c.phone) === Utils.cleanPhone(picked.phone));
+          if (!alreadyExists && picked.name) {
+            await Contacts.addContact({ name: picked.name, phone: picked.phone });
+          }
+        }
+      });
+    }
+
+    // Internal contact picker (modal list)
+    const btnPickInternal = document.getElementById('btn-pick-internal');
+    if (btnPickInternal) {
+      btnPickInternal.addEventListener('click', async () => {
+        const allContacts = await Contacts.getAllContacts();
+        if (!allContacts.length) {
+          Utils.showToast(Utils.t('contacts.noContacts'), 'error');
+          return;
+        }
+        const html = `
+          <div class="form-page">
+            <h2>${Utils.t('message.selectContact')}</h2>
+            <input type="text" id="contact-search-modal" class="form-input mb-1" placeholder="${Utils.t('common.search')}...">
+            <div class="contact-picker-list" id="contact-picker-list">
+              ${allContacts.map(c => `
+                <div class="contact-pick-item" data-id="${c.id}" data-phone="${Utils.escapeHtml(c.phone)}" data-name="${Utils.escapeHtml(c.name || '')}">
+                  <div class="contact-avatar">${(c.name || '?')[0].toUpperCase()}</div>
+                  <div class="contact-details">
+                    <div class="contact-name">${Utils.escapeHtml(c.name || c.phone)}</div>
+                    <div class="contact-phone">${Utils.formatPhone(c.phone)}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+        const modal = Utils.showModal(html);
+
+        // Search filter
+        const searchInput = modal.querySelector('#contact-search-modal');
+        searchInput.addEventListener('input', Utils.debounce(() => {
+          const q = searchInput.value.toLowerCase();
+          modal.querySelectorAll('.contact-pick-item').forEach(item => {
+            const name = (item.dataset.name || '').toLowerCase();
+            const phone = (item.dataset.phone || '');
+            item.style.display = (name.includes(q) || phone.includes(q)) ? 'flex' : 'none';
+          });
+        }, 150));
+
+        // Click on contact
+        modal.querySelectorAll('.contact-pick-item').forEach(item => {
+          item.addEventListener('click', () => {
+            setSelectedContact(item.dataset.name, item.dataset.phone, item.dataset.id);
+            Utils.closeModal(modal);
+          });
+        });
+      });
+    }
+
+    // Quick add contact
+    const btnQuickAdd = document.getElementById('btn-quick-add-contact');
+    if (btnQuickAdd) {
+      btnQuickAdd.addEventListener('click', () => {
+        const html = `
+          <div class="form-page">
+            <h2>${Utils.t('contacts.addContact')}</h2>
+            <form id="quick-contact-form">
+              <div class="form-group">
+                <label>${Utils.t('contacts.name')}</label>
+                <input type="text" name="name" placeholder="${Utils.t('contacts.namePlaceholder')}" required>
+              </div>
+              <div class="form-group">
+                <label>${Utils.t('contacts.phone')}</label>
+                <input type="tel" name="phone" placeholder="${Utils.t('contacts.phonePlaceholder')}" required>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" data-action="cancel">${Utils.t('common.cancel')}</button>
+                <button type="submit" class="btn btn-primary">${Utils.t('common.save')}</button>
+              </div>
+            </form>
+          </div>
+        `;
+        const modal = Utils.showModal(html);
+        modal.querySelector('[data-action="cancel"]').addEventListener('click', () => Utils.closeModal(modal));
+        modal.querySelector('#quick-contact-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const name = fd.get('name');
+          const phone = fd.get('phone');
+          const newContact = await Contacts.addContact({ name, phone });
+          setSelectedContact(name, phone, newContact.id);
+          Utils.closeModal(modal);
+          Utils.showToast(Utils.t('common.success'));
+        });
+      });
+    }
 
     // Char count
     if (messageText) {
@@ -317,12 +482,12 @@ const App = (() => {
       updateCount();
     }
 
-    // Contact selection
+    // Contact selection (hidden select, kept for form submission)
     if (contactSelect) {
       contactSelect.addEventListener('change', () => {
         const opt = contactSelect.selectedOptions[0];
         if (opt && opt.dataset.phone) {
-          document.getElementById('phone-input').value = opt.dataset.phone;
+          phoneInput.value = opt.dataset.phone;
           if (groupSelect) groupSelect.value = '';
         }
       });
@@ -332,8 +497,8 @@ const App = (() => {
     if (groupSelect) {
       groupSelect.addEventListener('change', () => {
         if (groupSelect.value) {
-          document.getElementById('phone-input').value = '';
-          if (contactSelect) contactSelect.value = '';
+          phoneInput.value = '';
+          clearSelectedContact();
         }
       });
     }

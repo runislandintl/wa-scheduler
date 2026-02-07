@@ -269,6 +269,30 @@ const Utils = (() => {
     return div.innerHTML;
   }
 
+  // ---- Contact Picker API (Android/Chrome) ----
+  function hasContactPicker() {
+    return ('contacts' in navigator && 'ContactsManager' in window);
+  }
+
+  async function pickContact() {
+    if (!hasContactPicker()) return null;
+    try {
+      const props = ['name', 'tel'];
+      const opts = { multiple: false };
+      const contacts = await navigator.contacts.select(props, opts);
+      if (contacts && contacts.length > 0) {
+        const c = contacts[0];
+        return {
+          name: c.name && c.name.length > 0 ? c.name[0] : '',
+          phone: c.tel && c.tel.length > 0 ? c.tel[0] : ''
+        };
+      }
+    } catch (e) {
+      console.log('Contact picker cancelled or error:', e);
+    }
+    return null;
+  }
+
   return {
     loadLanguage, t, getLang, getSavedLang,
     getTheme, setTheme, applyTheme,
@@ -277,6 +301,7 @@ const Utils = (() => {
     formatDate, formatTime, formatDateTime, formatRelative, toLocalInputValue,
     applyTemplateVars, parseCSV,
     showToast, showModal, closeModal, showConfirm,
-    debounce, escapeHtml
+    debounce, escapeHtml,
+    hasContactPicker, pickContact
   };
 })();
