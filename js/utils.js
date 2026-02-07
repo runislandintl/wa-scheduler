@@ -65,16 +65,39 @@ const Utils = (() => {
     const cleanPhone = phone.replace(/[\s\-\(\)\.+]/g, '').replace(/^00/, '');
     const encodedMsg = encodeURIComponent(message);
 
-    if (app === 'business') {
-      // iOS WhatsApp Business URL scheme
-      return `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
+    // Use whatsapp:// URL scheme for iOS (works better in PWA/standalone mode)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+    if (isIOS) {
+      if (app === 'business') {
+        // WhatsApp Business iOS URL scheme
+        return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`;
+      }
+      return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`;
     }
+
     return `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
   }
 
   function openWhatsApp(phone, message, app) {
     const url = buildWhatsAppLink(phone, message, app);
-    window.open(url, '_blank');
+    // On iOS PWA, window.open is blocked. Use location.href or a real <a> click
+    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+    if (isStandalone) {
+      // In PWA standalone mode: create a temporary link and click it
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 100);
+    } else {
+      // In browser: direct navigation works
+      window.location.href = url;
+    }
   }
 
   // ---- Phone formatting ----
