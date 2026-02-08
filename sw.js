@@ -2,7 +2,7 @@
 // Service Worker - WA Scheduler PWA
 // ============================================
 
-const CACHE_NAME = 'wa-scheduler-v5';
+const CACHE_NAME = 'wa-scheduler-v6';
 
 const ASSETS = [
   './',
@@ -69,20 +69,38 @@ self.addEventListener('fetch', (event) => {
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
+  const action = event.action;
+  const data = event.notification.data || {};
+
   event.notification.close();
 
+  // "send" action: open WhatsApp deep link directly
+  if (action === 'send' && data.url) {
+    event.waitUntil(
+      self.clients.openWindow(data.url)
+    );
+    return;
+  }
+
+  // "dismiss" action: just close (already closed above)
+  if (action === 'dismiss') {
+    return;
+  }
+
+  // Default click (no action button, just tapped notification body):
+  // Focus the app and navigate to the message
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(clients => {
-        // Focus existing window or open new one
         if (clients.length > 0) {
           clients[0].focus();
           clients[0].postMessage({
             type: 'notification-click',
-            data: event.notification.data
+            data: data
           });
         } else {
-          self.clients.openWindow('./index.html#/messages');
+          const hash = data.messageId ? `#/edit/${data.messageId}` : '#/messages';
+          self.clients.openWindow('./index.html' + hash);
         }
       })
   );

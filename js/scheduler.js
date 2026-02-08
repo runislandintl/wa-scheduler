@@ -4,17 +4,27 @@
 
 const Scheduler = (() => {
   let checkInterval = null;
-  const CHECK_INTERVAL_MS = 30000; // Check every 30 seconds
+  const CHECK_INTERVAL_MS = 15000; // Check every 15 seconds
 
   async function init() {
     startChecking();
-    await requestNotificationPermission();
+    // Listen for SW messages (notification clicks)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'notification-click') {
+          const msgId = event.data.data?.messageId;
+          if (msgId) {
+            window.location.hash = `#/edit/${msgId}`;
+          }
+        }
+      });
+    }
   }
 
   function startChecking() {
     if (checkInterval) clearInterval(checkInterval);
     checkInterval = setInterval(checkMessages, CHECK_INTERVAL_MS);
-    checkMessages(); // Check immediately
+    checkMessages();
   }
 
   function stopChecking() {
@@ -41,20 +51,24 @@ const Scheduler = (() => {
     try {
       const messages = await DB.getByIndex(DB.STORES.messages, 'status', 'pending');
       const now = new Date();
-      const advanceMinutes = parseInt(localStorage.getItem('wa-scheduler-advance') || '1');
+      const advanceMinutes = parseInt(localStorage.getItem('wa-scheduler-advance') || '5');
 
       for (const msg of messages) {
         const scheduledTime = new Date(msg.scheduledAt);
         const notifyTime = new Date(scheduledTime.getTime() - advanceMinutes * 60000);
 
+        // Send notification when it's time (advance reminder)
         if (now >= notifyTime && !msg.notified) {
-          await notifyMessage(msg);
+          await sendNotification(msg);
           msg.notified = true;
           await DB.update(DB.STORES.messages, msg);
         }
 
-        if (now >= scheduledTime) {
-          await triggerMessage(msg);
+        // Send another notification at the exact scheduled time
+        if (now >= scheduledTime && !msg.triggeredNotification) {
+          await sendNotification(msg, true);
+          msg.triggeredNotification = true;
+          await DB.update(DB.STORES.messages, msg);
         }
       }
     } catch (e) {
@@ -62,44 +76,61 @@ const Scheduler = (() => {
     }
   }
 
-  async function notifyMessage(msg) {
+  async function sendNotification(msg, isExactTime = false) {
     if (Notification.permission !== 'granted') return;
 
-    const contactName = msg.contactName || msg.phone;
+    const contactName = msg.contactName || Utils.formatPhone(msg.phone);
+    const title = isExactTime
+      ? Utils.t('notification.titleNow')
+      : Utils.t('notification.title');
     const body = Utils.t('notification.body').replace('{recipient}', contactName);
 
-    const notification = new Notification(Utils.t('notification.title'), {
-      body,
-      icon: './icons/icon-192.png',
-      badge: './icons/icon-192.png',
-      tag: `wa-msg-${msg.id}`,
-      requireInteraction: true,
-      data: { messageId: msg.id }
-    });
-
-    notification.onclick = () => {
-      window.focus();
-      openMessage(msg);
-      notification.close();
-    };
-  }
-
-  async function triggerMessage(msg) {
-    // Mark as sent
-    msg.status = 'sent';
-    msg.sentAt = new Date().toISOString();
-    await DB.update(DB.STORES.messages, msg);
-
-    // Open WhatsApp deep link
-    openMessage(msg);
-
-    // Handle recurrence
-    if (msg.recurrence && msg.recurrence !== 'none') {
-      await scheduleNextOccurrence(msg);
+    // Try Service Worker notifications first (work when app is closed on iOS 16.4+)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(title, {
+          body,
+          icon: './icons/icon-192.png',
+          badge: './icons/icon-192.png',
+          tag: `wa-msg-${msg.id}${isExactTime ? '-now' : ''}`,
+          requireInteraction: true,
+          renotify: true,
+          data: {
+            messageId: msg.id,
+            phone: msg.phone,
+            text: msg.text,
+            app: msg.app,
+            url: Utils.buildWhatsAppLink(msg.phone, msg.text, msg.app)
+          },
+          actions: [
+            { action: 'send', title: Utils.t('message.sendNow') },
+            { action: 'dismiss', title: Utils.t('common.close') }
+          ]
+        });
+        return;
+      } catch (e) {
+        console.log('SW notification failed, falling back:', e);
+      }
     }
 
-    // Dispatch event for UI update
-    window.dispatchEvent(new CustomEvent('message-sent', { detail: msg }));
+    // Fallback: regular Notification API
+    try {
+      const notification = new Notification(title, {
+        body,
+        icon: './icons/icon-192.png',
+        tag: `wa-msg-${msg.id}`,
+        requireInteraction: true
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        window.location.hash = `#/edit/${msg.id}`;
+        notification.close();
+      };
+    } catch (e) {
+      console.log('Notification failed:', e);
+    }
   }
 
   function openMessage(msg) {
@@ -116,6 +147,7 @@ const Scheduler = (() => {
       scheduledAt: nextDate.toISOString(),
       status: 'pending',
       notified: false,
+      triggeredNotification: false,
       sentAt: null,
       createdAt: new Date().toISOString(),
       parentId: msg.id
@@ -147,7 +179,6 @@ const Scheduler = (() => {
     return date;
   }
 
-  // Schedule a new message
   async function scheduleMessage(data) {
     const message = {
       id: DB.generateId(),
@@ -163,36 +194,45 @@ const Scheduler = (() => {
       mediaFiles: data.mediaFiles || [],
       status: 'pending',
       notified: false,
+      triggeredNotification: false,
       sentAt: null
     };
 
     await DB.add(DB.STORES.messages, message);
+
+    // Request notification permission if not yet granted
+    if (Notification.permission === 'default') {
+      await requestNotificationPermission();
+    }
+
     Utils.showToast(Utils.t('message.scheduled'));
     window.dispatchEvent(new CustomEvent('message-scheduled', { detail: message }));
     return message;
   }
 
-  // Update an existing message
   async function updateMessage(msg) {
     msg.updatedAt = new Date().toISOString();
+    // Reset notification flags if rescheduled
+    if (msg.status === 'pending') {
+      msg.notified = false;
+      msg.triggeredNotification = false;
+    }
     await DB.update(DB.STORES.messages, msg);
     Utils.showToast(Utils.t('message.updated'));
     window.dispatchEvent(new CustomEvent('message-updated', { detail: msg }));
     return msg;
   }
 
-  // Delete a message
   async function deleteMessage(id) {
     await DB.remove(DB.STORES.messages, id);
     Utils.showToast(Utils.t('message.deleted'));
     window.dispatchEvent(new CustomEvent('message-deleted', { detail: { id } }));
   }
 
-  // Mark expired messages
   async function markExpired() {
     const messages = await DB.getByIndex(DB.STORES.messages, 'status', 'pending');
     const now = new Date();
-    const expireAfter = 24 * 60 * 60 * 1000; // 24h after scheduled time
+    const expireAfter = 48 * 60 * 60 * 1000; // 48h after scheduled time
 
     for (const msg of messages) {
       const scheduled = new Date(msg.scheduledAt);
@@ -203,13 +243,11 @@ const Scheduler = (() => {
     }
   }
 
-  // Get messages by status
   async function getMessagesByStatus(status) {
     if (status === 'all') return DB.getAll(DB.STORES.messages);
     return DB.getByIndex(DB.STORES.messages, 'status', status);
   }
 
-  // Get upcoming messages (next 24h)
   async function getUpcoming(limit = 5) {
     const pending = await DB.getByIndex(DB.STORES.messages, 'status', 'pending');
     const now = new Date();

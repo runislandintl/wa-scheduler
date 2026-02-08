@@ -88,11 +88,24 @@ const App = (() => {
     const overview = await Stats.getOverview();
     const upcoming = await Scheduler.getUpcoming(5);
 
+    const notifPerm = Scheduler.getNotificationPermission();
+    const showNotifBanner = notifPerm !== 'granted' && notifPerm !== 'unsupported';
+
     container.innerHTML = `
       <div class="page page-dashboard">
         <div class="page-header">
           <h1>${Utils.t('dashboard.title')}</h1>
         </div>
+
+        ${showNotifBanner ? `
+          <div class="notif-banner" id="notif-banner">
+            <div class="notif-banner-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <div class="notif-banner-text">${Utils.t('notification.bannerText')}</div>
+            <button class="btn btn-sm btn-primary" id="btn-enable-notif">${Utils.t('notification.bannerButton')}</button>
+          </div>
+        ` : ''}
 
         <div class="dashboard-stats">
           <div class="mini-stat">
@@ -139,6 +152,18 @@ const App = (() => {
         </div>
       </div>
     `;
+
+    // Bind notification banner button
+    const btnEnableNotif = document.getElementById('btn-enable-notif');
+    if (btnEnableNotif) {
+      btnEnableNotif.addEventListener('click', async () => {
+        const granted = await Scheduler.requestNotificationPermission();
+        if (granted) {
+          const banner = document.getElementById('notif-banner');
+          if (banner) banner.remove();
+        }
+      });
+    }
   }
 
   // ---- New / Edit Message ----

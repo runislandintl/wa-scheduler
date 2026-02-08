@@ -188,8 +188,11 @@
   },
   "notification": {
     "title": "Scheduled WhatsApp message",
+    "titleNow": "Time to send your message!",
     "body": "Tap to send your message to {recipient}",
-    "permission": "Allow notifications to receive reminders"
+    "permission": "Allow notifications to receive reminders",
+    "bannerText": "Enable notifications so you never miss a scheduled message",
+    "bannerButton": "Enable"
   },
   "status": {
     "pending": "Pending",

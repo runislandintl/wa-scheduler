@@ -188,8 +188,11 @@
   },
   "notification": {
     "title": "Message WhatsApp programmé",
+    "titleNow": "C'est l'heure d'envoyer !",
     "body": "Appuyez pour envoyer votre message à {recipient}",
-    "permission": "Autorisez les notifications pour recevoir les rappels"
+    "permission": "Autorisez les notifications pour recevoir les rappels",
+    "bannerText": "Activez les notifications pour ne manquer aucun envoi programmé",
+    "bannerButton": "Activer"
   },
   "status": {
     "pending": "En attente",
