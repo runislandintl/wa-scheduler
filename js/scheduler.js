@@ -160,7 +160,7 @@ const Scheduler = (() => {
       recurrence: data.recurrence || 'none',
       recurrenceInterval: data.recurrenceInterval || 1,
       tags: data.tags || [],
-      attachmentNote: data.attachmentNote || '',
+      mediaFiles: data.mediaFiles || [],
       status: 'pending',
       notified: false,
       sentAt: null

@@ -83,15 +83,18 @@ const Utils = (() => {
   function openWhatsApp(phone, message, app) {
     const url = buildWhatsAppLink(phone, message, app);
 
-    // Use a real <a> element click - works on all platforms (iOS Safari, PWA, Android)
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => a.remove(), 200);
+    // Method 1: try window.open (works in most browsers)
+    const w = window.open(url, '_blank');
+    if (w) return;
+
+    // Method 2: fallback - use location.href
+    window.location.href = url;
+  }
+
+  // Create an <a> tag the user can tap directly (for iOS where programmatic clicks are blocked)
+  function createWhatsAppButton(phone, message, app, label) {
+    const url = buildWhatsAppLink(phone, message, app);
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-wa-send">${label || 'Envoyer via WhatsApp'}</a>`;
   }
 
   // ---- Phone formatting ----
@@ -290,7 +293,7 @@ const Utils = (() => {
   return {
     loadLanguage, t, getLang, getSavedLang,
     getTheme, setTheme, applyTheme,
-    buildWhatsAppLink, openWhatsApp,
+    buildWhatsAppLink, openWhatsApp, createWhatsAppButton,
     formatPhone, cleanPhone,
     formatDate, formatTime, formatDateTime, formatRelative, toLocalInputValue,
     applyTemplateVars, parseCSV,

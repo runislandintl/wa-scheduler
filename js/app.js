@@ -302,19 +302,37 @@ const App = (() => {
             </div>
           </div>
 
-          <!-- Attachment Note -->
+          <!-- Media Attachments -->
           <div class="form-group">
-            <label>${Utils.t('message.attachmentNote')}</label>
-            <input type="text" name="attachmentNote"
-              value="${isEdit ? Utils.escapeHtml(message.attachmentNote || '') : ''}"
-              placeholder="${Utils.t('message.attachmentNotePlaceholder')}">
+            <label>${Utils.t('message.media')}</label>
+            <div class="media-upload-area" id="media-upload-area">
+              <div class="media-previews" id="media-previews">
+                ${isEdit && message.mediaFiles ? message.mediaFiles.map((m, i) => `
+                  <div class="media-preview-item" data-index="${i}">
+                    ${m.type.startsWith('image/') ? `<img src="${m.dataUrl}" alt="">` : `<video src="${m.dataUrl}"></video>`}
+                    <button type="button" class="media-remove" data-index="${i}">&times;</button>
+                  </div>
+                `).join('') : ''}
+              </div>
+              <label class="media-add-btn" id="media-add-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span>${Utils.t('message.addMedia')}</span>
+                <input type="file" id="media-file-input" accept="image/*,video/*" multiple style="display:none">
+              </label>
+            </div>
+            <div class="form-hint">${Utils.t('message.mediaHint')}</div>
           </div>
 
           <!-- Actions -->
           <div class="form-actions">
             ${isEdit ? `
               <button type="button" class="btn btn-danger" id="btn-delete-msg">${Utils.t('common.delete')}</button>
-              <button type="button" class="btn btn-secondary" id="btn-send-now">${Utils.t('message.sendNow')}</button>
+              <a href="${Utils.buildWhatsAppLink(message.phone, message.text, message.app)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" id="btn-send-now">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                ${Utils.t('message.sendNow')}
+              </a>
             ` : ''}
             <button type="submit" class="btn btn-primary btn-lg">
               ${isEdit ? Utils.t('message.update') : Utils.t('message.schedule')}
@@ -475,6 +493,62 @@ const App = (() => {
       });
     }
 
+    // ---- Media attachments ----
+    let mediaFiles = existingMessage && existingMessage.mediaFiles ? [...existingMessage.mediaFiles] : [];
+    const mediaInput = document.getElementById('media-file-input');
+    const mediaPreviews = document.getElementById('media-previews');
+
+    function renderMediaPreviews() {
+      mediaPreviews.innerHTML = mediaFiles.map((m, i) => `
+        <div class="media-preview-item" data-index="${i}">
+          ${m.type.startsWith('image/') ? `<img src="${m.dataUrl}" alt="">` : `
+            <div class="media-video-thumb">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          `}
+          <button type="button" class="media-remove" data-index="${i}">&times;</button>
+          <div class="media-name">${Utils.escapeHtml(m.name)}</div>
+        </div>
+      `).join('');
+
+      mediaPreviews.querySelectorAll('.media-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          mediaFiles.splice(parseInt(btn.dataset.index), 1);
+          renderMediaPreviews();
+        });
+      });
+    }
+
+    if (mediaInput) {
+      mediaInput.addEventListener('change', async () => {
+        const files = Array.from(mediaInput.files);
+        for (const file of files) {
+          if (mediaFiles.length >= 5) {
+            Utils.showToast(Utils.t('message.mediaMax'), 'error');
+            break;
+          }
+          const dataUrl = await fileToDataUrl(file);
+          mediaFiles.push({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            dataUrl
+          });
+        }
+        renderMediaPreviews();
+        mediaInput.value = '';
+      });
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    }
+
     // Char count
     if (messageText) {
       const updateCount = () => { charCount.textContent = messageText.value.length; };
@@ -582,7 +656,7 @@ const App = (() => {
         recurrence: formData.get('recurrence'),
         recurrenceInterval: parseInt(document.getElementById('interval-input')?.value || '1'),
         tags: currentTags,
-        attachmentNote: formData.get('attachmentNote') || ''
+        mediaFiles: mediaFiles
       };
 
       if (groupId) {
@@ -606,7 +680,7 @@ const App = (() => {
         existingMessage.recurrence = data.recurrence;
         existingMessage.recurrenceInterval = data.recurrenceInterval;
         existingMessage.tags = data.tags;
-        existingMessage.attachmentNote = data.attachmentNote;
+        existingMessage.mediaFiles = data.mediaFiles;
         if (contactSelect && contactSelect.value) {
           const opt = contactSelect.selectedOptions[0];
           existingMessage.contactId = contactSelect.value;
@@ -641,15 +715,15 @@ const App = (() => {
       });
     }
 
-    // Send now button
+    // Send now button (it's a real <a> link now, just mark as sent on click)
     const sendNowBtn = document.getElementById('btn-send-now');
     if (sendNowBtn && existingMessage) {
       sendNowBtn.addEventListener('click', () => {
-        Scheduler.openMessage(existingMessage);
         existingMessage.status = 'sent';
         existingMessage.sentAt = new Date().toISOString();
         DB.update(DB.STORES.messages, existingMessage);
-        navigate('messages');
+        // Don't navigate immediately - let the WhatsApp link open first
+        setTimeout(() => navigate('messages'), 300);
       });
     }
   }
@@ -778,6 +852,18 @@ const App = (() => {
           <span class="status-badge ${statusClass}">${statusText}</span>
         </div>
         <div class="message-body">${Utils.escapeHtml(msg.text).slice(0, 120)}${msg.text.length > 120 ? '...' : ''}</div>
+        ${msg.mediaFiles && msg.mediaFiles.length ? `
+          <div class="message-media-row">
+            ${msg.mediaFiles.map(m => `
+              <div class="message-media-thumb">
+                ${m.type.startsWith('image/') ? `<img src="${m.dataUrl}" alt="">` : `
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                `}
+              </div>
+            `).join('')}
+            <span class="media-count">${msg.mediaFiles.length} ${Utils.t('message.mediaCount')}</span>
+          </div>
+        ` : ''}
         <div class="message-footer">
           <span class="message-time">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -797,10 +883,21 @@ const App = (() => {
         </div>
         <div class="message-actions-row">
           ${msg.status === 'pending' ? `
-            <button class="btn btn-sm btn-primary" data-action="send-now" data-id="${msg.id}">${Utils.t('message.sendNow')}</button>
+            <a href="${Utils.buildWhatsAppLink(msg.phone, msg.text, msg.app)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary btn-wa-send" data-action="mark-sent" data-id="${msg.id}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+              ${Utils.t('message.sendNow')}
+            </a>
           ` : ''}
           ${msg.status === 'sent' || msg.status === 'expired' ? `
-            <button class="btn btn-sm btn-secondary" data-action="reschedule" data-id="${msg.id}">${Utils.t('message.reschedule')}</button>
+            <a href="${Utils.buildWhatsAppLink(msg.phone, msg.text, msg.app)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary btn-wa-send" data-action="mark-sent" data-id="${msg.id}">
+              ${Utils.t('message.reschedule')}
+            </a>
+          ` : ''}
+          ${msg.mediaFiles && msg.mediaFiles.length ? `
+            <button class="btn btn-sm btn-outline" data-action="share-media" data-id="${msg.id}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+              ${Utils.t('message.shareMedia')}
+            </button>
           ` : ''}
           <button class="btn btn-sm btn-outline" data-action="edit-msg" data-id="${msg.id}">${Utils.t('common.edit')}</button>
           <button class="btn btn-sm btn-danger-outline" data-action="delete-msg" data-id="${msg.id}">${Utils.t('common.delete')}</button>
@@ -824,21 +921,62 @@ const App = (() => {
       });
     });
 
-    document.querySelectorAll('[data-action="send-now"]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const msg = await DB.get(DB.STORES.messages, btn.dataset.id);
+    // Mark as sent when user taps the WhatsApp link (real <a> tag, no JS blocking)
+    document.querySelectorAll('[data-action="mark-sent"]').forEach(link => {
+      link.addEventListener('click', async () => {
+        const msg = await DB.get(DB.STORES.messages, link.dataset.id);
         if (msg) {
-          Scheduler.openMessage(msg);
           msg.status = 'sent';
           msg.sentAt = new Date().toISOString();
           await DB.update(DB.STORES.messages, msg);
-          handleRoute();
+          // Refresh list after a short delay (let the link open first)
+          setTimeout(() => handleRoute(), 500);
         }
       });
     });
 
-    document.querySelectorAll('[data-action="reschedule"]').forEach(btn => {
-      btn.addEventListener('click', () => navigate(`edit/${btn.dataset.id}`));
+    // Share media via Web Share API
+    document.querySelectorAll('[data-action="share-media"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const msg = await DB.get(DB.STORES.messages, btn.dataset.id);
+        if (!msg || !msg.mediaFiles || !msg.mediaFiles.length) return;
+
+        // Convert dataUrls to File objects
+        const files = [];
+        for (const media of msg.mediaFiles) {
+          try {
+            const resp = await fetch(media.dataUrl);
+            const blob = await resp.blob();
+            const file = new File([blob], media.name, { type: media.type });
+            files.push(file);
+          } catch (e) {
+            console.error('Error converting media:', e);
+          }
+        }
+
+        // Use Web Share API if available (iOS Safari supports this)
+        if (navigator.canShare && navigator.canShare({ files })) {
+          try {
+            await navigator.share({
+              text: msg.text,
+              files
+            });
+          } catch (e) {
+            if (e.name !== 'AbortError') {
+              Utils.showToast(Utils.t('message.shareError'), 'error');
+            }
+          }
+        } else {
+          // Fallback: download files
+          for (const media of msg.mediaFiles) {
+            const a = document.createElement('a');
+            a.href = media.dataUrl;
+            a.download = media.name;
+            a.click();
+          }
+          Utils.showToast(Utils.t('message.mediaDownloaded'));
+        }
+      });
     });
   }
 

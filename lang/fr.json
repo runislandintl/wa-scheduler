@@ -61,7 +61,15 @@
     "updated": "Message mis à jour !",
     "deleted": "Message supprimé",
     "sendNow": "Envoyer maintenant",
-    "reschedule": "Reprogrammer"
+    "reschedule": "Renvoyer",
+    "media": "Médias",
+    "addMedia": "Ajouter photo/vidéo",
+    "mediaHint": "Les médias seront partagés via le bouton Partager (iOS) ou téléchargés.",
+    "mediaMax": "Maximum 5 fichiers",
+    "mediaCount": "fichier(s)",
+    "shareMedia": "Partager",
+    "shareError": "Erreur de partage",
+    "mediaDownloaded": "Médias téléchargés"
   },
   "messages": {
     "title": "Messages programmés",

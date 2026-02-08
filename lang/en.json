@@ -61,7 +61,15 @@
     "updated": "Message updated!",
     "deleted": "Message deleted",
     "sendNow": "Send now",
-    "reschedule": "Reschedule"
+    "reschedule": "Resend",
+    "media": "Media",
+    "addMedia": "Add photo/video",
+    "mediaHint": "Media will be shared via the Share button (iOS) or downloaded.",
+    "mediaMax": "Maximum 5 files",
+    "mediaCount": "file(s)",
+    "shareMedia": "Share",
+    "shareError": "Share error",
+    "mediaDownloaded": "Media downloaded"
   },
   "messages": {
     "title": "Scheduled messages",
