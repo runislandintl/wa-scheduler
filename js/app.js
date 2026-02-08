@@ -1497,16 +1497,20 @@ const App = (() => {
       }
     });
 
-    // Clear data
+    // Clear data - only delete sent/expired messages, keep contacts, templates, groups, tags
     document.getElementById('btn-clear-data').addEventListener('click', async () => {
       const confirmed = await Utils.showConfirm(Utils.t('settings.clearConfirm'));
       if (confirmed) {
-        await DB.clear(DB.STORES.messages);
-        await DB.clear(DB.STORES.contacts);
-        await DB.clear(DB.STORES.groups);
-        await DB.clear(DB.STORES.templates);
-        await DB.clear(DB.STORES.tags);
+        // Only remove sent and expired messages, keep pending ones
+        const allMessages = await DB.getAll(DB.STORES.messages);
+        for (const msg of allMessages) {
+          if (msg.status === 'sent' || msg.status === 'expired') {
+            await DB.remove(DB.STORES.messages, msg.id);
+          }
+        }
+        // Keep contacts, groups, templates, tags intact
         handleRoute();
+        Utils.showToast(Utils.t('settings.clearSuccess'));
       }
     });
   }
