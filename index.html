@@ -111,6 +111,7 @@
   <!-- Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
+      let swRefreshing = false;
       navigator.serviceWorker.register('./sw.js')
         .then(reg => {
           console.log('SW registered:', reg.scope);
@@ -120,20 +121,22 @@
             if (newSW) {
               newSW.addEventListener('statechange', () => {
                 if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                  // New SW ready — tell it to activate immediately
                   newSW.postMessage({ type: 'SKIP_WAITING' });
                 }
               });
             }
           });
-          // Check for updates every 30 seconds
-          setInterval(() => reg.update(), 30000);
+          // Check for updates periodically (not too often)
+          setInterval(() => reg.update(), 60000);
         })
         .catch(err => console.log('SW registration failed:', err));
 
-      // Reload page when new SW takes control
+      // Reload page ONCE when new SW takes control (prevent infinite loop)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload();
+        if (!swRefreshing) {
+          swRefreshing = true;
+          window.location.reload();
+        }
       });
     }
   </script>

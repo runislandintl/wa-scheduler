@@ -706,17 +706,22 @@ const App = (() => {
         existingMessage.recurrenceInterval = data.recurrenceInterval;
         existingMessage.tags = data.tags;
         existingMessage.mediaFiles = data.mediaFiles;
-        if (contactSelect && contactSelect.value) {
-          const opt = contactSelect.selectedOptions[0];
+        // Update contact info from the selected contact display
+        const editDisplayedName = selectedNameEl.textContent.trim();
+        if (editDisplayedName) {
+          existingMessage.contactName = editDisplayedName;
+          existingMessage.contactId = contactSelect ? contactSelect.value : existingMessage.contactId;
+        } else if (contactSelect && contactSelect.value) {
           existingMessage.contactId = contactSelect.value;
-          existingMessage.contactName = opt.textContent.split('(')[0].trim();
+          existingMessage.contactName = contactSelect.selectedOptions[0].dataset.name || '';
         }
         await Scheduler.updateMessage(existingMessage);
       } else {
-        // New
-        const contactName = contactSelect && contactSelect.value
-          ? contactSelect.selectedOptions[0].textContent.split('(')[0].trim()
-          : '';
+        // New - get contact name from the selected contact display (set by picker)
+        const displayedName = selectedNameEl.textContent.trim();
+        const contactName = displayedName || (contactSelect && contactSelect.value
+          ? contactSelect.selectedOptions[0].dataset.name || ''
+          : '');
         await Scheduler.scheduleMessage({
           ...data,
           phone,
@@ -740,15 +745,21 @@ const App = (() => {
       });
     }
 
-    // Send now button (it's a real <a> link now, just mark as sent on click)
-    // No async/await to avoid blocking iOS native <a> navigation
+    // Send now button (it's a real <a> link)
+    // Update href dynamically to reflect any form edits, then mark as sent
     const sendNowBtn = document.getElementById('btn-send-now');
     if (sendNowBtn && existingMessage) {
+      // Update link href when user clicks (use mousedown so it fires before navigation)
+      sendNowBtn.addEventListener('mousedown', () => {
+        const currentPhone = phoneInput.value || existingMessage.phone;
+        const currentText = messageText.value || existingMessage.text;
+        const currentApp = document.querySelector('input[name="app"]:checked')?.value || existingMessage.app;
+        sendNowBtn.href = Utils.buildWhatsAppLink(currentPhone, currentText, currentApp);
+      });
       sendNowBtn.addEventListener('click', () => {
         existingMessage.status = 'sent';
         existingMessage.sentAt = new Date().toISOString();
         DB.update(DB.STORES.messages, existingMessage);
-        // Don't navigate immediately - let the WhatsApp link open first
         setTimeout(() => navigate('messages'), 1500);
       });
     }
@@ -1401,7 +1412,7 @@ const App = (() => {
           <div class="setting-item">
             <label>${Utils.t('settings.advanceMinutes')}</label>
             <input type="number" id="advance-minutes" min="0" max="60"
-              value="${localStorage.getItem('wa-scheduler-advance') || '1'}"
+              value="${localStorage.getItem('wa-scheduler-advance') || '5'}"
               class="form-input" style="width: 80px;">
           </div>
         </div>

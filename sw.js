@@ -2,7 +2,7 @@
 // Service Worker - WA Scheduler PWA v7
 // ============================================
 
-const CACHE_NAME = 'wa-scheduler-v7';
+const CACHE_NAME = 'wa-scheduler-v8';
 
 const ASSETS = [
   './',
