@@ -112,8 +112,29 @@
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('SW registered:', reg.scope))
+        .then(reg => {
+          console.log('SW registered:', reg.scope);
+          // Auto-activate new SW when available
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            if (newSW) {
+              newSW.addEventListener('statechange', () => {
+                if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New SW ready — tell it to activate immediately
+                  newSW.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            }
+          });
+          // Check for updates every 30 seconds
+          setInterval(() => reg.update(), 30000);
+        })
         .catch(err => console.log('SW registration failed:', err));
+
+      // Reload page when new SW takes control
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
     }
   </script>
 </body>

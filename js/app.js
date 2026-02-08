@@ -741,6 +741,7 @@ const App = (() => {
     }
 
     // Send now button (it's a real <a> link now, just mark as sent on click)
+    // No async/await to avoid blocking iOS native <a> navigation
     const sendNowBtn = document.getElementById('btn-send-now');
     if (sendNowBtn && existingMessage) {
       sendNowBtn.addEventListener('click', () => {
@@ -748,7 +749,7 @@ const App = (() => {
         existingMessage.sentAt = new Date().toISOString();
         DB.update(DB.STORES.messages, existingMessage);
         // Don't navigate immediately - let the WhatsApp link open first
-        setTimeout(() => navigate('messages'), 300);
+        setTimeout(() => navigate('messages'), 1500);
       });
     }
   }
@@ -946,17 +947,22 @@ const App = (() => {
       });
     });
 
-    // Mark as sent when user taps the WhatsApp link (real <a> tag, no JS blocking)
+    // Mark as sent when user taps the WhatsApp link
+    // IMPORTANT: Do NOT use async/await here — it blocks iOS <a> navigation
     document.querySelectorAll('[data-action="mark-sent"]').forEach(link => {
-      link.addEventListener('click', async () => {
-        const msg = await DB.get(DB.STORES.messages, link.dataset.id);
-        if (msg) {
-          msg.status = 'sent';
-          msg.sentAt = new Date().toISOString();
-          await DB.update(DB.STORES.messages, msg);
-          // Refresh list after a short delay (let the link open first)
-          setTimeout(() => handleRoute(), 500);
-        }
+      link.addEventListener('click', () => {
+        const msgId = link.dataset.id;
+        // Fire-and-forget: don't await, let the <a> navigate freely
+        DB.get(DB.STORES.messages, msgId).then(msg => {
+          if (msg) {
+            msg.status = 'sent';
+            msg.sentAt = new Date().toISOString();
+            DB.update(DB.STORES.messages, msg).then(() => {
+              setTimeout(() => handleRoute(), 1000);
+            });
+          }
+        });
+        // Do NOT call e.preventDefault() — let the native <a> link work
       });
     });
 

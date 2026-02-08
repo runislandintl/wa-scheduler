@@ -8,6 +8,8 @@ const Scheduler = (() => {
 
   async function init() {
     startChecking();
+    registerBackgroundSync();
+
     // Listen for SW messages (notification clicks)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
@@ -21,9 +23,45 @@ const Scheduler = (() => {
     }
   }
 
+  // Register Periodic Background Sync + regular Sync
+  async function registerBackgroundSync() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+
+      // Try Periodic Background Sync (Android Chrome mainly)
+      if ('periodicSync' in reg) {
+        try {
+          const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+          if (status.state === 'granted') {
+            await reg.periodicSync.register('check-messages', {
+              minInterval: 60 * 1000 // 1 minute minimum
+            });
+            console.log('Periodic Background Sync registered');
+          }
+        } catch (e) {
+          console.log('Periodic Background Sync not available:', e);
+        }
+      }
+
+      // Register one-time background sync as fallback
+      if ('sync' in reg) {
+        try {
+          await reg.sync.register('check-messages');
+          console.log('Background Sync registered');
+        } catch (e) {
+          console.log('Background Sync not available:', e);
+        }
+      }
+    } catch (e) {
+      console.log('SW registration error:', e);
+    }
+  }
+
   function startChecking() {
     if (checkInterval) clearInterval(checkInterval);
     checkInterval = setInterval(checkMessages, CHECK_INTERVAL_MS);
+    // Run immediately
     checkMessages();
   }
 
@@ -49,6 +87,9 @@ const Scheduler = (() => {
 
   async function checkMessages() {
     try {
+      // Also tell the SW to check (keeps it alive for background scenarios)
+      tellSWToCheck();
+
       const messages = await DB.getByIndex(DB.STORES.messages, 'status', 'pending');
       const now = new Date();
       const advanceMinutes = parseInt(localStorage.getItem('wa-scheduler-advance') || '5');
@@ -59,7 +100,7 @@ const Scheduler = (() => {
 
         // Send notification when it's time (advance reminder)
         if (now >= notifyTime && !msg.notified) {
-          await sendNotification(msg);
+          await sendNotification(msg, false);
           msg.notified = true;
           await DB.update(DB.STORES.messages, msg);
         }
@@ -71,13 +112,36 @@ const Scheduler = (() => {
           await DB.update(DB.STORES.messages, msg);
         }
       }
+
+      // Re-register background sync for next wake-up
+      reRegisterSync();
     } catch (e) {
       console.error('Scheduler check error:', e);
     }
   }
 
-  async function sendNotification(msg, isExactTime = false) {
-    if (Notification.permission !== 'granted') return;
+  // Tell Service Worker to also check messages (redundancy for background)
+  function tellSWToCheck() {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CHECK_MESSAGES' });
+    }
+  }
+
+  // Re-register one-time sync after each check (keeps the chain going)
+  async function reRegisterSync() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if ('sync' in reg) {
+        await reg.sync.register('check-messages');
+      }
+    } catch (e) {
+      // Sync not available, that's ok
+    }
+  }
+
+  async function sendNotification(msg, isExactTime) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
     const contactName = msg.contactName || Utils.formatPhone(msg.phone);
     const title = isExactTime
@@ -85,8 +149,8 @@ const Scheduler = (() => {
       : Utils.t('notification.title');
     const body = Utils.t('notification.body').replace('{recipient}', contactName);
 
-    // Try Service Worker notifications first (work when app is closed on iOS 16.4+)
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    // Try Service Worker notifications first (work when app is in background/closed on iOS 16.4+)
+    if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
         await reg.showNotification(title, {
@@ -201,7 +265,7 @@ const Scheduler = (() => {
     await DB.add(DB.STORES.messages, message);
 
     // Request notification permission if not yet granted
-    if (Notification.permission === 'default') {
+    if ('Notification' in window && Notification.permission === 'default') {
       await requestNotificationPermission();
     }
 
